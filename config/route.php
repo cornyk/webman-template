@@ -13,16 +13,18 @@
  */
 
 use app\common\RespDef;
-use app\controller\IndexController;
 use app\util\RespUtil;
 use support\Request;
 use Webman\Route;
 
-/**
- * 路由配置
- */
-Route::get('/', [IndexController::class, 'index']);
 
+/**
+ * 从路由文件目录中载入路由配置
+ */
+$routeFiles = glob(base_path() . '/routes/*.php');
+foreach ($routeFiles as $file) {
+    require_once $file;
+}
 
 /**
  * 健康检测URL
