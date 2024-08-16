@@ -1,5 +1,5 @@
 {
-  "name": "workerman/webman",
+  "name": "cornyk/webman-template",
   "type": "project",
   "description": "High performance HTTP Service Framework.",
   "require": {
