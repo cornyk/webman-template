@@ -13,10 +13,10 @@
  */
 
 return [
-    'listen' => 'http://0.0.0.0:8787',
+    'listen' => 'http://0.0.0.0:' . env('SERVER_PORT', '8787'),
     'transport' => 'tcp',
     'context' => [],
-    'name' => 'webman',
+    'name' => 'webserver',
     'count' => cpu_count() * 4,
     'user' => '',
     'group' => '',

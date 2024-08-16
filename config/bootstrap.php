@@ -15,4 +15,6 @@
 return [
     support\bootstrap\Session::class,
     support\bootstrap\LaravelDb::class,
+    app\bootstrap\DbLogListenerBootstrap::class,
+    app\bootstrap\CliLogListenerBootstrap::class,
 ];

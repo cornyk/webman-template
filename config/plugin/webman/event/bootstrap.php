@@ -13,11 +13,5 @@
  */
 
 return [
-    'default' => [
-        'host' => env('REDIS_HOST',  'localhost'),
-        'password' => env('REDIS_AUTH', ''),
-        'port' => env('REDIS_PORT', '6379'),
-        'database' => env('REDIS_DB', '0'),
-        'prefix' => env('REDIS_PREFIX', ''),
-    ],
+    Webman\Event\BootStrap::class,
 ];

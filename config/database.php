@@ -12,4 +12,25 @@
  * @license   http://www.opensource.org/licenses/mit-license.php MIT License
  */
 
-return [];
+return [
+    // 默认数据库
+    'default' => 'mysql',
+
+    // 各种数据库配置
+    'connections' => [
+        'mysql' => [
+            'driver'      => env('DB_DRIVER', 'mysql'),
+            'host'        => env('DB_HOST', 'localhost'),
+            'port'        => env('DB_PORT', '3306'),
+            'database'    => env('DB_DATABASE'),
+            'username'    => env('DB_USERNAME'),
+            'password'    => env('DB_PASSWORD'),
+            'unix_socket' => '',
+            'charset'     => env('DB_CHARSET', 'utf8mb4'),
+            'collation'   => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+            'prefix'      => env('DB_PREFIX'),
+            'strict'      => true,
+            'engine'      => null,
+        ],
+    ],
+];

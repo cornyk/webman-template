@@ -12,4 +12,10 @@
  * @license   http://www.opensource.org/licenses/mit-license.php MIT License
  */
 
-return [];
+return [
+    '' => [
+        app\middleware\TraceIdMiddleware::class,
+        app\middleware\RequestLogMiddleware::class,
+        app\middleware\CorsMiddleware::class,
+    ],
+];
