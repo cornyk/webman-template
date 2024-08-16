@@ -1,5 +1,12 @@
 # Webman 模板项目
 
+### 使用本项目
+
+```bash
+composer create-project cornyk/webman-template:dev-master {your_project_name}
+```
+
+
 ### 相关文档
 + 主框架 Webman
 
