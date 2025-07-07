@@ -12,7 +12,7 @@
  * @license   http://www.opensource.org/licenses/mit-license.php MIT License
  */
 
-namespace process;
+namespace app\process;
 
 use FilesystemIterator;
 use RecursiveDirectoryIterator;
@@ -30,25 +30,30 @@ class Monitor
     /**
      * @var array
      */
-    protected $paths = [];
+    protected array $paths = [];
 
     /**
      * @var array
      */
-    protected $extensions = [];
+    protected array $extensions = [];
 
     /**
-     * @var string
+     * @var array
      */
-    public static $lockFile = __DIR__ . '/../runtime/monitor.lock';
+    protected array $loadedFiles = [];
+
+    /**
+     * @var int
+     */
+    protected int $ppid = 0;
 
     /**
      * Pause monitor
      * @return void
      */
-    public static function pause()
+    public static function pause(): void
     {
-        file_put_contents(static::$lockFile, time());
+        file_put_contents(static::lockFile(), time());
     }
 
     /**
@@ -58,8 +63,8 @@ class Monitor
     public static function resume(): void
     {
         clearstatcache();
-        if (is_file(static::$lockFile)) {
-            unlink(static::$lockFile);
+        if (is_file(static::lockFile())) {
+            unlink(static::lockFile());
         }
     }
 
@@ -70,7 +75,16 @@ class Monitor
     public static function isPaused(): bool
     {
         clearstatcache();
-        return file_exists(static::$lockFile);
+        return file_exists(static::lockFile());
+    }
+
+    /**
+     * Lock file
+     * @return string
+     */
+    protected static function lockFile(): string
+    {
+        return runtime_path('monitor.lock');
     }
 
     /**
@@ -81,9 +95,16 @@ class Monitor
      */
     public function __construct($monitorDir, $monitorExtensions, array $options = [])
     {
+        $this->ppid = function_exists('posix_getppid') ? posix_getppid() : 0;
         static::resume();
         $this->paths = (array)$monitorDir;
         $this->extensions = $monitorExtensions;
+        foreach (get_included_files() as $index => $file) {
+            $this->loadedFiles[$file] = $index;
+            if (strpos($file, 'webman-framework/src/support/App.php')) {
+                break;
+            }
+        }
         if (!Worker::getAllWorkers()) {
             return;
         }
@@ -135,19 +156,27 @@ class Monitor
             // check mtime
             if (in_array($file->getExtension(), $this->extensions, true) && $lastMtime < $file->getMTime()) {
                 $lastMtime = $file->getMTime();
+                if (DIRECTORY_SEPARATOR === '/' && isset($this->loadedFiles[$file->getRealPath()])) {
+                    echo "$file updated but cannot be reloaded because only auto-loaded files support reload.\n";
+                    continue;
+                }
                 $var = 0;
                 exec('"'.PHP_BINARY . '" -l ' . $file, $out, $var);
                 if ($var) {
                     continue;
                 }
-                echo $file . " updated and reload\n";
                 // send SIGUSR1 signal to master process for reload
                 if (DIRECTORY_SEPARATOR === '/') {
-                    posix_kill(posix_getppid(), SIGUSR1);
-                } else {
+                    if ($masterPid = $this->getMasterPid()) {
+                        echo $file . " updated and reload\n";
+                        posix_kill($masterPid, SIGUSR1);
+                    } else {
+                        echo "Master process has gone away and can not reload\n";
+                    }
                     return true;
                 }
-                break;
+                echo $file . " updated and reload\n";
+                return true;
             }
         }
         if (!$tooManyFilesCheck && $count > 1000) {
@@ -155,6 +184,29 @@ class Monitor
             $tooManyFilesCheck = 1;
         }
         return false;
+    }
+
+    /**
+     * @return int
+     */
+    public function getMasterPid(): int
+    {
+        if ($this->ppid === 0) {
+            return 0;
+        }
+        if (function_exists('posix_kill') && !posix_kill($this->ppid, 0)) {
+            echo "Master process has gone away\n";
+            return $this->ppid = 0;
+        }
+        if (PHP_OS_FAMILY !== 'Linux') {
+            return $this->ppid;
+        }
+        $cmdline = "/proc/$this->ppid/cmdline";
+        if (!is_readable($cmdline) || !($content = file_get_contents($cmdline)) || (!str_contains($content, 'WorkerMan') && !str_contains($content, 'php'))) {
+            // Process not exist
+            $this->ppid = 0;
+        }
+        return $this->ppid;
     }
 
     /**
@@ -177,13 +229,18 @@ class Monitor
      * @param $memoryLimit
      * @return void
      */
-    public function checkMemory($memoryLimit)
+    public function checkMemory($memoryLimit): void
     {
         if (static::isPaused() || $memoryLimit <= 0) {
             return;
         }
-        $ppid = posix_getppid();
-        $childrenFile = "/proc/$ppid/task/$ppid/children";
+        $masterPid = $this->getMasterPid();
+        if ($masterPid <= 0) {
+            echo "Master process has gone away\n";
+            return;
+        }
+
+        $childrenFile = "/proc/$masterPid/task/$masterPid/children";
         if (!is_file($childrenFile) || !($children = file_get_contents($childrenFile))) {
             return;
         }
@@ -206,9 +263,10 @@ class Monitor
 
     /**
      * Get memory limit
-     * @return float
+     * @param $memoryLimit
+     * @return int
      */
-    protected function getMemoryLimit($memoryLimit)
+    protected function getMemoryLimit($memoryLimit): int
     {
         if ($memoryLimit === 0) {
             return 0;
@@ -223,21 +281,25 @@ class Monitor
             return 0;
         }
         $unit = strtolower($memoryLimit[strlen($memoryLimit) - 1]);
+        $memoryLimit = (int)$memoryLimit;
         if ($unit === 'g') {
-            $memoryLimit = 1024 * (int)$memoryLimit;
-        } else if ($unit === 'm') {
-            $memoryLimit = (int)$memoryLimit;
+            $memoryLimit = 1024 * $memoryLimit;
         } else if ($unit === 'k') {
-            $memoryLimit = ((int)$memoryLimit / 1024);
+            $memoryLimit = ($memoryLimit / 1024);
+        } else if ($unit === 'm') {
+            $memoryLimit = (int)($memoryLimit);
+        } else if ($unit === 't') {
+            $memoryLimit = (1024 * 1024 * $memoryLimit);
         } else {
-            $memoryLimit = ((int)$memoryLimit / (1024 * 1024));
+            $memoryLimit = ($memoryLimit / (1024 * 1024));
         }
-        if ($memoryLimit < 30) {
-            $memoryLimit = 30;
+        if ($memoryLimit < 50) {
+            $memoryLimit = 50;
         }
         if ($usePhpIni) {
-            $memoryLimit = (int)(0.8 * $memoryLimit);
+            $memoryLimit = (0.8 * $memoryLimit);
         }
-        return $memoryLimit;
+        return (int)$memoryLimit;
     }
+
 }
